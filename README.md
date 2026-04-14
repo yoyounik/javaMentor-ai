@@ -1,5 +1,11 @@
 # JavaMentor AI — RAG-powered Java Interview Coach > A production-deployed AI chatbot that answers Java interview questions > using Retrieval-Augmented Generation. Zero hallucination guarantee — > answers come only from the knowledge base.
 ## Live Demo [https://huggingface.co/spaces/Nikstatus07/javamentor-ai](link) 
+Check out my LinkedIn post for demo video:  
+www.linkedin.com/in/nikhilsinha07
+
+<img width="730" height="756" alt="image" src="https://github.com/user-attachments/assets/b0fede31-e447-47d0-a4ce-27a608bba95e" />
+
 ## Architecture User question → Sentence Transformer embed (384d vector) → ChromaDB cosine similarity search → Top 3 chunks retrieved → Groq LLaMA 3.3 70B with injected context → Grounded answer ## Tech Stack | Layer | Technology | Why | |---|---|---| | LLM | Groq LLaMA 3.3 70B | 500+ tok/s, free tier | | Embeddings | all-MiniLM-L6-v2 | Local, no API cost | | Vector DB | ChromaDB | Zero-infra prototype | | UI | Gradio | Deployable in 10 lines | | Hosting | Hugging Face Spaces | Free, permanent URL | ## Key Design Decisions - 
-**RAG over fine-tuning**: knowledge stays current, answers are auditable - **Local embeddings**: no API dependency or cost in the retrieval step - 
+**RAG over fine-tuning**: knowledge stays current, answers are auditable .- 
+**Local embeddings**: no API dependency or cost in the retrieval step - 
 **Temperature 0.3**: deterministic answers for technical content - **History trimming**: cap at 20 messages to prevent context overflow ## Production improvements (next steps) - Swap ChromaDB → Pinecone for persistent, scalable vector storage - Add LangSmith tracing for LLM observability - Replace Gradio → React frontend for richer UX - Add document chunking pipeline for ingesting PDFs automatically ## Run locally pip install -r requirements.txt export GROQ_API_KEY=your_key python app.py
