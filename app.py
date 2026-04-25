@@ -3,6 +3,8 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from groq import Groq
 import gradio as gr
+from functools import lru_cache
+import hashlib
 
 # ── Setup ──────────────────────────────────────────────
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -35,13 +37,47 @@ collection.add(
 )
 print(f"Knowledge base ready: {collection.count()} entries")
 
+# ── Cache 1: Embedding cache ───────────────────────────
+# Problem: encoding "HashMap question" takes 50ms every time
+# Fix: cache the vector — same text always gives same vector
+
+# lru_cache only works on hashable args — strings qualify
+@lru_cache(maxsize=256) # store last 256 unique queries
+def embed_cached(text: str) ->tuple:
+    """Cached version of embedder.encode().
+    Returns tuple (not list) because lru_cache needs hashable return."""
+    vec = embedder.encode([text]).tolist()[0]
+    return tuple(vec)
+
+# Update retrieve() to use cached embedding:
+def retrieve(query: str, n:int=3) -> list:
+  vec = [list(embed_cached(query))]
+  results = collection.query(
+      query_embeddings=vec,
+      n_results=n
+  )
+  return results["documents"][0]
+
+# ── Cache 2: Response cache ────────────────────────────
+# Problem: same question → Groq API called every time → costs tokens
+# Fix: cache full answers by question hash
+
+response_cache={}
+CACHE_MAX_SIZE = 100
+
+def get_cache_key(question: str) -> str:
+  normalised = question.lower().strip().strip("?!.")
+  return hashlib.md5(normalised.encode()).hexdigest()
+
+
 # ── Core functions ─────────────────────────────────────
-def retrieve(query: str, n: int = 3) -> list:
-    vec = embedder.encode([query]).tolist()
-    results = collection.query(query_embeddings=vec, n_results=n)
-    return results["documents"][0]
 
 def rag_chat(question: str, history: list) -> str:
+    cache_key = get_cache_key(question)
+    if cache_key in response_cache:
+      print(f"Cache hit for: {question[:40]}")
+      return response_cache[cache_key]
+    #agar cache mein nhi mila to chroma db se chunks of vector call krlo
     chunks = retrieve(question)
     context = "\n".join([f"[{i+1}] {c}" for i, c in enumerate(chunks)])
 
@@ -64,7 +100,19 @@ Rules:
         messages=messages,
         temperature=0.3
     )
-    return response.choices[0].message.content
+    
+
+    full_response = response.choices[0].message.content
+
+    # 1. Pehle check karo size full toh nahi
+    if len(response_cache) >= CACHE_MAX_SIZE:
+        oldest_key = next(iter(response_cache))
+        del response_cache[oldest_key]
+
+    # 2. Ab naye response ko cache mein save karo
+    response_cache[cache_key] = full_response
+
+    return full_response
 
 # ── Gradio UI ──────────────────────────────────────────
 def chat(message, history):
